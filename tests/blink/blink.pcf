@@ -1,0 +1,4 @@
+set_io clk D1 #do tego pin wchodzi zegar
+
+set_io led_red B6 #ten pin wychodzi do diody pomaranczowej
+

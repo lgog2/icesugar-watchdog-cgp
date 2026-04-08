@@ -1,0 +1,16 @@
+# zegar 12MHz - z iCELink
+set_io clk          D1
+
+# Reset 
+set_io ext_pin_rst  B3 # wazne ze jest GBIN (jak zegar)
+
+# wejscia (pmod2)
+set_io x_pins[0]    A3 # stan_k_60_sek
+set_io x_pins[1]    B6 # stan_k_5_sek
+set_io x_pins[2]    C5 # sygnal zycia nanopi
+
+# wyjscia (pmod3)
+set_io y_pins[0]    C6 # rozladowywanie k 60 sek
+set_io y_pins[1]    E3 # rozladowywanie k 5 sek
+set_io y_pins[2]    C2 # ladowanie k 5 sek
+set_io y_pins[3]    A1 # odciecie zasilania nanopi
