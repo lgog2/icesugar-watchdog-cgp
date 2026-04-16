@@ -12,18 +12,18 @@ module cgp_core (
     // DEFINICJA WYJSC (Przekazywanych do Wrappera):
     // y[0] : rozladuj kondensator 60s (Utrzymanie pracy NanoPi)
     // y[1] : rozladuj kondensator 5s  (Przygotowanie timera resetu)
-    // y[2] : laduj kondensator 5s     (odlicznie odciecia zasilania NANOPI)
+    // y[2] : odcinaj zasilanie NANOPI
     // --------------------------------------------------------
 
     
-    // sygnal zycia (x[2]) resetuje 60s tylko wtedy, gdy 60s nie uplynelo (~x[0])
+    // sygnal zycia (x[2]) rozladowuje 60s tylko wtedy, gdy 60s nie uplynelo (~x[0])
     // w przeciwnym razie czeka na koniec resetu (x[1]).
     assign y[0] = (x[2] & ~x[0]) | x[1]; 
     
-    // utrzymuje kondensator 5s pusty jezeli 60sek nie uplynelo.
+    // utrzymuje kondensator 5s pusty (rozladowywuje) jezeli 60sek nie uplynelo.
     assign y[1] = ~x[0]; 
     
-    // uruchomienie odciecia zasilania jezeli 60s minelo ale 5s jeszcze nie uplynelo(wiec trwa5s)
+    // uruchomienie odciecia zasilania jezeli 60s minelo ale 5s jeszcze nie uplynelo(wiec trwa ladowanie k 5s)
     assign y[2] = x[0] & ~x[1]; 
 
 endmodule

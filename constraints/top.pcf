@@ -5,12 +5,20 @@ set_io clk          D1
 set_io ext_pin_rst  B3 # wazne ze jest GBIN (jak zegar)
 
 # wejscia (pmod2)
-set_io x_pins[0]    A3 # stan_k_60_sek
+#set_io -pullup no x_pins[0]    A3 # stan_k_60_sek /spalony pin A3 w tej plytce
+set_io x_pins[0]    A1 # stan_k_60_sek
 set_io x_pins[1]    B6 # stan_k_5_sek
 set_io x_pins[2]    C5 # sygnal zycia nanopi
 
 # wyjscia (pmod3)
 set_io y_pins[0]    C6 # rozladowywanie k 60 sek
 set_io y_pins[1]    E3 # rozladowywanie k 5 sek
-set_io y_pins[2]    C2 # ladowanie k 5 sek
-set_io y_pins[3]    A1 # odciecie zasilania nanopi
+set_io y_pins[2]    C2 # odciecie zasilania nanopi
+
+# wyjscia diagnostyczne (pmod3 i pmod1)
+set_io debug_pins[0] B4 # sygnal zycia z UART       [PMOD3]
+set_io debug_pins[1] B5 # stan kond 60s             [PMOD3]
+set_io debug_pins[2] E1 # stan kond 5s              [PMOD3]
+set_io debug_pins[3] E2 # rozladowywanie k 60s      [PMOD1]
+set_io debug_pins[4] B1 # rozladowywanie k 5s       [PMOD1]
+#set_io debug_pins[5] A1 # odciecie zasilania nanopi [PMOD3/PMOD1] /chwilowo uzywany jako x_pins[0]

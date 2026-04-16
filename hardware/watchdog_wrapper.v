@@ -10,14 +10,19 @@ module watchdog_wrapper (
     input clk,
     input rst,
     input  [2:0] x_pins, //sygnaly z zewnatrz (asynchroniczne)
-    output [3:0] y_pins //sygnaly na zewnatrz (synchroniczne) 
+    output [2:0] y_pins, //sygnaly na zewnatrz (synchroniczne) 
+    output [4:0] debug_pins  // sygnaly na zewnatrz do debugowania
 );
 
     // x_pins[0] : stan kondensatora 60s
     // x_pins[1] : stan kondensatora 5s
     // x_pins[2] : linia TX UART z NanoPi 
     
+    // ==========================================
     // SYNCHRONIZACJA WEJSC ANALOGOWYCH Z KONDENSATOROW
+    // ==========================================
+    
+    
     reg [1:0] sync_x0;
     reg [1:0] sync_x1;
 
@@ -33,8 +38,10 @@ module watchdog_wrapper (
         end
     end
     
-    
+    // ==========================================
     //DETEKCJA ZBOCZA OPADAJACEGO NA  UART
+    // ==========================================
+    
     reg [1:0] uart_sync;
     
     always @(posedge clk or posedge rst) begin
@@ -49,8 +56,10 @@ module watchdog_wrapper (
     // przyjmuje stan 1 na 1 takt zegara kiedy poprzedni stan UART byl 1 a obeny to 0
     wire uart_edge_pulse = (uart_sync == 2'b10);
     
-    
+    // ==========================================
     // ASYNCHRONICZNY RDZEN LOGICZNY
+    // ==========================================
+    
     wire [2:0] core_x;
     wire [2:0] core_y; 
     
@@ -65,14 +74,15 @@ module watchdog_wrapper (
         .x(core_x),
         .y(core_y)
     );
-    
+    // ==========================================
     // WYDLUZANIE IMPULSOW WYJSCIOWYCH (dodanie 4.2 ms)
+    // ==========================================
 
-    reg [15:0] pulse_timer [0:2]; //3 liczniki 
+    reg [17:0] pulse_timer [0:2]; //3 liczniki 
     reg [2:0]  out_reg; //3 rejestry wyjsciowe
     integer i;
     
-    // synchroniczny filtr zegarowy - dodje 4.2 ms do dlugosci kazdej zarejestrowanej 1 na wejsciach
+    // synchroniczny filtr zegarowy - dodje ok 20 ms do dlugosci kazdej zarejestrowanej 1 na wejsciach
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             for (i = 0; i < 3; i = i + 1) begin
@@ -82,7 +92,7 @@ module watchdog_wrapper (
         end else begin
             for (i = 0; i < 3; i = i + 1) begin
                 if (core_y[i] == 1'b1) begin
-                    pulse_timer[i] <= 16'd50000; //50000 x 83.3 ns = 4.2 ms 
+                    pulse_timer[i] <= 18'd240000; //240000 x 83.3 ns = ok 20 ms 
                     out_reg[i]     <= 1'b1;
                 end else if (pulse_timer[i] > 0) begin
                     pulse_timer[i] <= pulse_timer[i] - 1;
@@ -94,10 +104,40 @@ module watchdog_wrapper (
         end
     end
 
-    assign y_pins = {out_reg[2], out_reg};
+    assign y_pins = out_reg;
     //assign y_pins[0] = out_reg[0];
     //assign y_pins[1] = out_reg[1];
     //assign y_pins[2] = out_reg[2];
-    //assign y_pins[3] = out_reg[2];
+    
+    
+    // ==========================================
+    // DEBUGOWANIE
+    // ==========================================
+    // wydluzenie sygnalu zycia Nanopi do 20ms
+    reg [17:0] debug_uart_timer; 
+    reg        debug_uart_led;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            debug_uart_timer <= 0;
+            debug_uart_led   <= 0;
+        end else if (uart_edge_pulse) begin
+            debug_uart_timer <= 18'd240000; // 240000 cykli = ~20ms
+            debug_uart_led   <= 1'b1;
+        end else if (debug_uart_timer > 0) begin
+            debug_uart_timer <= debug_uart_timer - 1;
+            debug_uart_led   <= 1'b1;
+        end else begin
+            debug_uart_led   <= 1'b0;
+        end
+    end
+
+    // Mapowanie sygnalow na piny diagnostyczne
+    assign debug_pins[0] = debug_uart_led; // blysk 20ms przy zboczu opadajacym UART
+    assign debug_pins[1] = sync_x0[1];     // stan kondensatora 60s
+    assign debug_pins[2] = sync_x1[1];     // stan kondensatora 5s
+    assign debug_pins[3] = out_reg[0];      // rozladowywanie k 60s
+    assign debug_pins[4] = out_reg[1];	   // rozladowywanie k 5 sek - 
+    //assign debug_pins[5] = core_y[2];      // odcinanie zasilania Nanopi 
     
 endmodule

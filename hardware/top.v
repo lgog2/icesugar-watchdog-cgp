@@ -2,7 +2,8 @@ module top (
     input  wire clk,         // zagar systemowy 12 MHz 
     input  wire ext_pin_rst, // asynchroniczny reset (Pin B3 PMOD2)
     input  wire [2:0] x_pins, // wejcia z kondensatowow i  UART NanoPi
-    output wire [3:0] y_pins  // wycia 
+    output wire [2:0] y_pins,  // wyjscia 
+    output wire [4:0] debug_pins  // wyjscia diagnostyczne
 );
     // separacja na przyszlosc gdyby np potrzebny by resset stanem niskim
     wire sys_rst = ext_pin_rst;
@@ -11,7 +12,8 @@ module top (
         .clk(clk),
         .rst(sys_rst),
         .x_pins(x_pins),
-        .y_pins(y_pins)
+        .y_pins(y_pins),
+        .debug_pins(debug_pins)
     );
     
 
