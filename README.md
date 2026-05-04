@@ -7,9 +7,11 @@ Dokumentacja sprzetowa:
 
 * **Toolchain:** Yosys / NextPNR-iCE40 (Ekosystem Project IceStorm)
 ___________________________________________________________________________________________________________________
+SCHEMAT UKŁADU: Sprzętowy Watchdog (FPGA + RC)
+<img width="1169" height="826" alt="SCHEMAT_UKŁADU" src="https://github.com/user-attachments/assets/fadaf0c7-39bd-473e-8a25-635c2086b3f7" />
 
-
-Demonstracja działania: Sprzętowy Watchdog (FPGA + RC)
+___________________________________________________________________________________________________________________
+Demonstracja działania: 
 
 Film prezentuje funkcjonalny prototyp hybrydowego watchdoga. Czas odmierzany jest analogowo (ładowanie dwóch kondensatorów 100uF), a sterowanie i rozładowywanienie kondensatorów realizowane są przez asynchroniczną maszynę stanów zaimplementowaną w Verilogu na FPGA iCESugar-Nano.
 
@@ -29,6 +31,3 @@ Film prezentuje funkcjonalny prototyp hybrydowego watchdoga. Czas odmierzany jes
 Układ odcinający zasilanie jest wpięty w rzeczywisty zasilacz 5V. Samo NanoPi zostało na potrzeby testu zastąpione żółtą diodą LED, która gaśnie w momencie aktywacji resetu sprzętowego.
 
 https://github.com/user-attachments/assets/d579fb45-be3b-4c47-876f-1baa7433d37b
-
-
-
