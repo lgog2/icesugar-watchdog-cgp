@@ -1,3 +1,5 @@
+
+
 Dokumentacja sprzetowa:
 
 
@@ -30,4 +32,3 @@ Film prezentuje funkcjonalny prototyp hybrydowego watchdoga. Czas odmierzany jes
 **Środowisko testowe:**
 Układ odcinający zasilanie jest wpięty w rzeczywisty zasilacz 5V. Samo NanoPi zostało na potrzeby testu zastąpione żółtą diodą LED, która gaśnie w momencie aktywacji resetu sprzętowego.
 
-https://github.com/user-attachments/assets/d579fb45-be3b-4c47-876f-1baa7433d37b
