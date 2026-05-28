@@ -19,7 +19,7 @@ Film prezentuje funkcjonalny prototyp hybrydowego watchdoga. Czas odmierzany jes
 * **~42 sekundy** (Czas pracy) – rezystor 600 kΩ
 * **~3.7 sekundy** (Czas odcięcia zasilania) – rezystor 47 kΩ
 
-**Sygnalizacja diagnostyczna LED (od lewej):**
+**Sygnalizacja diagnostyczna LED:**
 1.  🟡 **Żółta:** Rozładowywanie kondensatora 3.7s
 2.  🔵 **Niebieska:** Rozładowywanie kondensatora 42s
 3.  🟢 **Zielona:** Stan kondensatora 3.7s (oczekiwanie na naładowanie
