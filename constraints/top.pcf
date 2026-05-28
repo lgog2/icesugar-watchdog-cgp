@@ -1,24 +1,19 @@
 # zegar 12MHz - z iCELink
 set_io clk          D1
 
-# Reset 
-set_io ext_pin_rst  B3 # wazne ze jest GBIN (jak zegar)
+# wejscia (pmod1 i pmod3)
+set_io x_pins[0]    C2 # stan_k_60_sek              [PMOD3]
+set_io x_pins[1]    A1 # stan_k_5_sek               [PMOD1]
+set_io x_pins[2]    E2 # sygnal zycia nanopi        [PMOD1]
 
-# wejscia (pmod2)
-#set_io -pullup no x_pins[0]    A3 # stan_k_60_sek /spalony pin A3 w tej plytce
-set_io x_pins[0]    A1 # stan_k_60_sek
-set_io x_pins[1]    B6 # stan_k_5_sek
-set_io x_pins[2]    C5 # sygnal zycia nanopi
+# wyjscia (pmod1 i pmod2)
+set_io y_pins[0]    B6 # rozladowywanie k 60 sek    [PMOD2]
+set_io y_pins[1]    B1 # rozladowywanie k 5 sek     [PMOD1]
+set_io y_pins[2]    C5 # odciecie zasilania nanopi  [PMOD2]
 
-# wyjscia (pmod3)
-set_io y_pins[0]    C6 # rozladowywanie k 60 sek
-set_io y_pins[1]    E3 # rozladowywanie k 5 sek
-set_io y_pins[2]    C2 # odciecie zasilania nanopi
-
-# wyjscia diagnostyczne (pmod3 i pmod1)
+# wyjscia diagnostyczne (pmod3)
 set_io debug_pins[0] B4 # sygnal zycia z UART       [PMOD3]
-set_io debug_pins[1] B5 # stan kond 60s             [PMOD3]
-set_io debug_pins[2] E1 # stan kond 5s              [PMOD3]
-set_io debug_pins[3] E2 # rozladowywanie k 60s      [PMOD1]
-set_io debug_pins[4] B1 # rozladowywanie k 5s       [PMOD1]
-#set_io debug_pins[5] A1 # odciecie zasilania nanopi [PMOD3/PMOD1] /chwilowo uzywany jako x_pins[0]
+set_io debug_pins[1] C6 # stan kond 60s             [PMOD3]
+set_io debug_pins[2] B5 # stan kond 5s              [PMOD3]
+set_io debug_pins[3] E3 # rozladowywanie k 60s      [PMOD3]
+set_io debug_pins[4] E1 # rozladowywanie k 5s       [PMOD3]

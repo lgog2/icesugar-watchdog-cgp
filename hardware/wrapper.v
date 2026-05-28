@@ -6,9 +6,8 @@
 
 
 // synchroniczny wrapper (12MHz t=83.3 ns )
-module watchdog_wrapper (
-    input clk,
-    input rst,
+module wrapper (
+    input  wire clk,         // Zegar systemowy 12 MHz 
     input  [2:0] x_pins, //sygnaly z zewnatrz (asynchroniczne)
     output [2:0] y_pins, //sygnaly na zewnatrz (synchroniczne) 
     output [4:0] debug_pins  // sygnaly na zewnatrz do debugowania
@@ -18,6 +17,20 @@ module watchdog_wrapper (
     // x_pins[1] : stan kondensatora 5s
     // x_pins[2] : linia TX UART z NanoPi 
     
+    // =======================================
+    // SOFT RESET przez 32768 taktow zegara pierwszych (2.7ms)
+    // =======================================
+    reg [15:0] por_counter = 16'd0;
+    
+    wire rst = !por_counter[15]; 
+    
+    always @(posedge clk) begin
+        if (rst) begin
+            por_counter <= por_counter + 1'b1;
+        end
+    end
+
+        
     // ==========================================
     // SYNCHRONIZACJA WEJSC ANALOGOWYCH Z KONDENSATOROW
     // ==========================================
@@ -26,12 +39,11 @@ module watchdog_wrapper (
     reg [1:0] sync_x0;
     reg [1:0] sync_x1;
 
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         if (rst) begin
             sync_x0 <= 2'b00;
             sync_x1 <= 2'b00;
         end else begin
-            // definiuje strukture zizyczna wyjscie z sync_x0[0] podpiete do wejscia sync_x0[1]
             // w kazdym takcie sync_x0[1] dostaje ustabilizowany sygnal
             sync_x0 <= {sync_x0[0], x_pins[0]}; 
             sync_x1 <= {sync_x1[0], x_pins[1]};
@@ -42,19 +54,21 @@ module watchdog_wrapper (
     //DETEKCJA ZBOCZA OPADAJACEGO NA  UART
     // ==========================================
     
-    reg [1:0] uart_sync;
-    
-    always @(posedge clk or posedge rst) begin
+    reg [2:0] uart_sync;
+    // oversampling: przesuwanie stanow w takt zegara 12 MHz
+    always @(posedge clk) begin
         if (rst) begin
             // w stanie resetu zakladamy linie UART w stanie Idle (High)
-            uart_sync <= 2'b11;
+            uart_sync <= 3'b111;
         end else begin
-            // oversampling: przesuwanie stanow w takt zegara 12 MHz
-            uart_sync <= {uart_sync[0], x_pins[2]};
+            // Bit [0] - stan lini UART (narażony na metastabilność)
+            // Bit [1] - sygnał ustabilizowany / obecny stabilny stan
+            // Bit [2] - historyczny stabilny stan (poprzedni takt)
+            uart_sync <= {uart_sync[1:0], x_pins[2]};
         end
     end
-    // przyjmuje stan 1 na 1 takt zegara kiedy poprzedni stan UART byl 1 a obeny to 0
-    wire uart_edge_pulse = (uart_sync == 2'b10);
+    // przyjmuje stan 1 na takt zegara kiedy poprzedni stan UART byl 1 a obecny to 0
+    wire uart_edge_pulse = (uart_sync[2:1] == 2'b10);
     
     // ==========================================
     // ASYNCHRONICZNY RDZEN LOGICZNY
@@ -66,7 +80,7 @@ module watchdog_wrapper (
     // przekazanie ustabilizowanych stanow kondensatorow (przeszly przez dwa przerzutniki D)
     assign core_x[0] = sync_x0[1];
     assign core_x[1] = sync_x1[1];
-    // przekazanie flagi detekcji spadku naiecia na UART
+    // przekazanie flagi detekcji spadku napiecia na UART
     assign core_x[2] = uart_edge_pulse;
 
     // inicjalizacja  cpg_core wewnatrz wrappera
@@ -75,7 +89,7 @@ module watchdog_wrapper (
         .y(core_y)
     );
     // ==========================================
-    // WYDLUZANIE IMPULSOW WYJSCIOWYCH (dodanie 4.2 ms)
+    // WYDLUZANIE IMPULSOW WYJSCIOWYCH (dodanie 20 ms)
     // ==========================================
 
     reg [17:0] pulse_timer [0:2]; //3 liczniki 
@@ -83,7 +97,7 @@ module watchdog_wrapper (
     integer i;
     
     // synchroniczny filtr zegarowy - dodje ok 20 ms do dlugosci kazdej zarejestrowanej 1 na wejsciach
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         if (rst) begin
             for (i = 0; i < 3; i = i + 1) begin
                 pulse_timer[i] <= 0;
@@ -117,7 +131,7 @@ module watchdog_wrapper (
     reg [17:0] debug_uart_timer; 
     reg        debug_uart_led;
 
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         if (rst) begin
             debug_uart_timer <= 0;
             debug_uart_led   <= 0;
@@ -138,6 +152,5 @@ module watchdog_wrapper (
     assign debug_pins[2] = sync_x1[1];     // stan kondensatora 5s
     assign debug_pins[3] = out_reg[0];      // rozladowywanie k 60s
     assign debug_pins[4] = out_reg[1];	   // rozladowywanie k 5 sek - 
-    //assign debug_pins[5] = core_y[2];      // odcinanie zasilania Nanopi 
-    
+        
 endmodule
