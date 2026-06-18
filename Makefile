@@ -5,40 +5,48 @@ MOUNT = /media/lg/iCELink
 SRC = hardware/cgp_core.v hardware/wrapper.v
 PCF = constraints/top.pcf
 
+all:raw
 
-all: $(BUILD)/$(PROJ).bin
+raw: $(BUILD)/$(PROJ)_raw.bin
+safe: $(BUILD)/$(PROJ)_safe.bin
 
 # synteza Yosys
-$(BUILD)/$(PROJ).json: $(SRC)
+$(BUILD)/$(PROJ)_raw.json: $(SRC)
 	mkdir -p $(BUILD)
-	yosys -p 'synth_ice40 -top wrapper -json $@' $(SRC)
+	yosys -p 'read_verilog $(SRC); synth_ice40 -top wrapper -json $@'
 	
+$(BUILD)/$(PROJ)_safe.json: $(SRC)
+	mkdir -p $(BUILD)
+	yosys -p 'read_verilog -D SAFE_MODE $(SRC); synth_ice40 -top wrapper -json $@'
 
 # place & route NextPNR
-$(BUILD)/$(PROJ).asc: $(BUILD)/$(PROJ).json $(PCF)
+$(BUILD)/%.asc: $(BUILD)/%.json $(PCF)
 	nextpnr-ice40 --lp1k --package cm36 --json $< --pcf $(PCF) --asc $@
-	
 
 # generowanie bitstreamu Icepack
-$(BUILD)/$(PROJ).bin: $(BUILD)/$(PROJ).asc
+$(BUILD)/%.bin: $(BUILD)/%.asc
 	icepack $< $@
 
 # wgranie do pamieci Flash
-prog: $(BUILD)/$(PROJ).bin
-	@echo "wgrywanie na ice"
+prog_raw: $(BUILD)/$(PROJ)_raw.bin
+	@echo "wgrywanie na ice - wersja raw"
+	#cp $< $(MOUNT)/
+	#sync
+	icesprog $<
+	@echo "koniec wgrywania"
+	
+prog_safe: $(BUILD)/$(PROJ)_safe.bin
+	@echo "wgrywanie na ice - wersja safe"
 	#cp $< $(MOUNT)/
 	#sync
 	icesprog $<
 	@echo "koniec wgrywania"
 
-# wgranie bezposrednie do pamieci ulotnej SRAM (ochrona ukladu podczas ewolucji)
-#prog_sram: $(BUILD)/$(PROJ).bin
-#	icesprog -s $<
-# -s ?
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all prog prog_sram clean
+.PHONY: all raw safe prog_raw prog_safe clean
 
 #generowanie schematow przez yosys:
 #yosys -p 'prep; show -format svg -prefix logic_view wrapper; synth_ice40 -top wrapper -json build/watchdog.json; show -format pdf -prefix physical_view wrapper' hardware/cgp_core.v hardware/wrapper.v

@@ -4,18 +4,21 @@
 // y2 = x0 and ~x1
 
 
-
 // synchroniczny wrapper (12MHz t=83.3 ns )
 module wrapper (
-    input  wire clk,         // Zegar systemowy 12 MHz 
-    input  [2:0] x_pins, //sygnaly z zewnatrz (asynchroniczne)
-    output [2:0] y_pins, //sygnaly na zewnatrz (synchroniczne) 
-    output [4:0] debug_pins  // sygnaly na zewnatrz do debugowania
+    input  wire clk,         // 12 MHz
+    input  wire [2:0] x_pins,    // sygnaly z zewnatrz (asynchroniczne)
+    output wire [2:0] y_pins,    // sygnaly na zewnatrz (synchroniczne) (bez wydluzania)
+    output wire [4:0] debug_pins  // Diagnostyka (wydluzone ~20ms)
 );
 
-    // x_pins[0] : stan kondensatora 60s
+     // x_pins[0] : stan kondensatora 60s
     // x_pins[1] : stan kondensatora 5s
     // x_pins[2] : linia TX UART z NanoPi 
+    
+    // y_pins[0] : rozladuj kondensator 60s (Utrzymanie pracy NanoPi)
+    // y_pins[1] : rozladuj kondensator 5s  (Przygotowanie timera resetu)
+    // y_pins[2] : odcinaj zasilanie NANOPI
     
     // =======================================
     // SOFT RESET przez 32768 taktow zegara pierwszych (2.7ms)
@@ -23,134 +26,141 @@ module wrapper (
     reg [15:0] por_counter = 16'd0;
     
     wire rst = !por_counter[15]; 
-    
     always @(posedge clk) begin
         if (rst) begin
             por_counter <= por_counter + 1'b1;
         end
     end
+    // always @(posedge clk) if (rst) por_counter <= por_counter + 1'b1;
 
-        
     // ==========================================
-    // SYNCHRONIZACJA WEJSC ANALOGOWYCH Z KONDENSATOROW
+    // SYNCHRONIZACJA WEJSC ANALOGOWYCH Z KONDENSATOROW (filtr 1ms - SAFE_MODE)
     // ==========================================
-    
     
     reg [1:0] sync_x0;
     reg [1:0] sync_x1;
-
+    // zabezpieczenie przed metastabilnoscia - domena czasu
     always @(posedge clk) begin
         if (rst) begin
             sync_x0 <= 2'b00;
             sync_x1 <= 2'b00;
         end else begin
-            // w kazdym takcie sync_x0[1] dostaje ustabilizowany sygnal
+            //w kazdym takcie sync_x0[1] dostaje ustabilizowany sygnal
             sync_x0 <= {sync_x0[0], x_pins[0]}; 
             sync_x1 <= {sync_x1[0], x_pins[1]};
         end
     end
     
-    // ==========================================
-    //DETEKCJA ZBOCZA OPADAJACEGO NA  UART
-    // ==========================================
+`ifdef SAFE_MODE
+
+    reg clean_x0, clean_x1;
+    reg [13:0] timer_0, timer_1;
     
+    always @(posedge clk) begin
+    	if (rst) begin
+            clean_x0 <= 1'b0;
+            clean_x1 <= 1'b0;
+            timer_0  <= 14'd0;
+            timer_1  <= 14'd0;
+        end else begin
+            // Filtracja K_60s
+            if (sync_x0[1] == clean_x0) begin
+                timer_0 <= 14'd0;
+            end else begin
+                timer_0 <= timer_0 + 1'b1;
+                // rejsetracja dopiero sygnalu trwajacego 1ms
+                if (timer_0 == 14'd12000) begin // 1ms
+                    clean_x0 <= sync_x0[1]; 
+                    timer_0 <= 14'd0; 
+                end
+            end
+            
+            // Filtracja K_5s
+            if (sync_x1[1] == clean_x1) begin
+                timer_1 <= 14'd0;
+            end else begin
+                timer_1 <= timer_1 + 1'b1;
+                if (timer_1 == 14'd12000) begin
+                    clean_x1 <= sync_x1[1]; 
+                    timer_1 <= 14'd0; 
+                end
+            end
+        end
+    end
+    
+    wire final_x0 = clean_x0;
+    wire final_x1 = clean_x1;
+    
+`else
+    
+    wire final_x0 = sync_x0[1];
+    wire final_x1 = sync_x1[1];
+
+`endif
+
+
+    // ==========================================
+    // DETEKCJA ZBOCZA OPADAJACEGO UART i wydluzenie do 30ms(3RC dla R=100ohm i C=100uF)
+    // ==========================================
     reg [2:0] uart_sync;
+    reg [18:0] uart_stretch_timer = 0;
     // oversampling: przesuwanie stanow w takt zegara 12 MHz
     always @(posedge clk) begin
         if (rst) begin
-            // w stanie resetu zakladamy linie UART w stanie Idle (High)
+            uart_stretch_timer <= 0;
+            // w stanie resetu linia UART w stanie Idle (High)
             uart_sync <= 3'b111;
         end else begin
             // Bit [0] - stan lini UART (narażony na metastabilność)
             // Bit [1] - sygnał ustabilizowany / obecny stabilny stan
             // Bit [2] - historyczny stabilny stan (poprzedni takt)
             uart_sync <= {uart_sync[1:0], x_pins[2]};
+            if (uart_sync[2:1] == 2'b10) begin
+            	uart_stretch_timer <= 19'd360000; // ~30 ms
+       	    end else if (uart_stretch_timer > 0) begin
+                uart_stretch_timer <= uart_stretch_timer - 1'b1;
+            end
         end
     end
-    // przyjmuje stan 1 na takt zegara kiedy poprzedni stan UART byl 1 a obecny to 0
-    wire uart_edge_pulse = (uart_sync[2:1] == 2'b10);
     
+    wire uart_stable_long = (uart_stretch_timer > 0);
+
     // ==========================================
     // ASYNCHRONICZNY RDZEN LOGICZNY
     // ==========================================
     
-    wire [2:0] core_x;
-    wire [2:0] core_y; 
+    wire [2:0] core_x = {uart_stable_long, final_x1, final_x0};
+    wire [2:0] core_y;
     
-    // przekazanie ustabilizowanych stanow kondensatorow (przeszly przez dwa przerzutniki D)
-    assign core_x[0] = sync_x0[1];
-    assign core_x[1] = sync_x1[1];
-    // przekazanie flagi detekcji spadku napiecia na UART
-    assign core_x[2] = uart_edge_pulse;
-
     // inicjalizacja  cpg_core wewnatrz wrappera
     cgp_core core_inst (
-        .x(core_x),
+        .x(core_x), 
         .y(core_y)
     );
-    // ==========================================
-    // WYDLUZANIE IMPULSOW WYJSCIOWYCH (dodanie 20 ms)
-    // ==========================================
 
-    reg [17:0] pulse_timer [0:2]; //3 liczniki 
-    reg [2:0]  out_reg; //3 rejestry wyjsciowe
+    // ==========================================
+    // SYGNALY WYJSCIOWE (BEZ WYDLUZANIA)
+    // ==========================================
+    // w fazie resetu kondensatory rozladowywane napiecie do Nanopi nieodciete
+    assign y_pins = rst ? 3'b011 : core_y;
+
+    // ==========================================
+    // DEBUGOWANIE - sygnaly wydluzone do 20ms
+    // ==========================================
+    reg [17:0] led_timers [0:1];
     integer i;
-    
-    // synchroniczny filtr zegarowy - dodje ok 20 ms do dlugosci kazdej zarejestrowanej 1 na wejsciach
+
     always @(posedge clk) begin
-        if (rst) begin
-            for (i = 0; i < 3; i = i + 1) begin
-                pulse_timer[i] <= 0;
-                out_reg[i]     <= 0; //0 na wszystkich wyjsciach
-            end
-        end else begin
-            for (i = 0; i < 3; i = i + 1) begin
-                if (core_y[i] == 1'b1) begin
-                    pulse_timer[i] <= 18'd240000; //240000 x 83.3 ns = ok 20 ms 
-                    out_reg[i]     <= 1'b1;
-                end else if (pulse_timer[i] > 0) begin
-                    pulse_timer[i] <= pulse_timer[i] - 1;
-                    out_reg[i]     <= 1'b1;
-                end else begin
-                    out_reg[i]     <= 1'b0;
-                end
-            end
+        for (i = 0; i < 2; i = i + 1) begin
+            if (core_y[i]) led_timers[i] <= 18'd240000; // ~20ms
+            else if (led_timers[i] > 0) led_timers[i] <= led_timers[i] - 1;
         end
     end
 
-    assign y_pins = out_reg;
-    //assign y_pins[0] = out_reg[0];
-    //assign y_pins[1] = out_reg[1];
-    //assign y_pins[2] = out_reg[2];
+    assign debug_pins[0] = uart_stable_long;    // Out:30ms przy zboczu opadajacym UART
+    assign debug_pins[1] = final_x0;            // In:stan k 60s(z filtrem 1ms albo bez)
+    assign debug_pins[2] = final_x1;            // In:stan k 5s(z filtrem 1ms albo bez)
+    assign debug_pins[3] = (led_timers[0] > 0); // Out:rozladowywanie k 60s
+    assign debug_pins[4] = (led_timers[1] > 0); // Out:rozladowywanie k 5 sek
     
-    
-    // ==========================================
-    // DEBUGOWANIE
-    // ==========================================
-    // wydluzenie sygnalu zycia Nanopi do 20ms
-    reg [17:0] debug_uart_timer; 
-    reg        debug_uart_led;
-
-    always @(posedge clk) begin
-        if (rst) begin
-            debug_uart_timer <= 0;
-            debug_uart_led   <= 0;
-        end else if (uart_edge_pulse) begin
-            debug_uart_timer <= 18'd240000; // 240000 cykli = ~20ms
-            debug_uart_led   <= 1'b1;
-        end else if (debug_uart_timer > 0) begin
-            debug_uart_timer <= debug_uart_timer - 1;
-            debug_uart_led   <= 1'b1;
-        end else begin
-            debug_uart_led   <= 1'b0;
-        end
-    end
-
-    // Mapowanie sygnalow na piny diagnostyczne
-    assign debug_pins[0] = debug_uart_led; // blysk 20ms przy zboczu opadajacym UART
-    assign debug_pins[1] = sync_x0[1];     // stan kondensatora 60s
-    assign debug_pins[2] = sync_x1[1];     // stan kondensatora 5s
-    assign debug_pins[3] = out_reg[0];      // rozladowywanie k 60s
-    assign debug_pins[4] = out_reg[1];	   // rozladowywanie k 5 sek - 
-        
 endmodule
