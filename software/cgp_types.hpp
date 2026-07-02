@@ -33,7 +33,7 @@ struct Individual {
 
 
 // ============================================================================
-// MODEL AWARII - pojedyncze uszkodzenie
+// MODEL AWARII - pojedyncze uszkodzenie(SA0 / SA1)
 // ============================================================================
 
 enum class FaultPort : int8_t {
@@ -44,11 +44,15 @@ enum class FaultPort : int8_t {
 	OUT  = 4	// calkowite wylaczenie LUT4 - uszkodzone wyjscie
 };
 
+enum class FaultType : int8_t {
+	SA0 = 0, // zwarcie do masy(Stuck-At-0)
+	SA1 = 1  // zwarcie do zasilania
+};
 
 struct FaultMask {
-	int target_lut = -1;				// -1: brak uszkodzenia | 0-29: indeks uszkodzonego LUT
-	FaultPort port = FaultPort::OUT;	// typ awarii
-
+	int8_t target_lut = -1;				// -1: brak uszkodzenia | 0-29: indeks uszkodzonego LUT
+	FaultPort port = FaultPort::OUT;
+	FaultType type = FaultType::SA0;
 	// sprawdzenia stanu
 	inline bool is_active() const {
 		return target_lut != -1;

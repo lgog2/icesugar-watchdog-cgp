@@ -121,6 +121,55 @@ inline Individual create_seed() {
 	return ind;
 }
 
+//----------------------------------------------------------------------------------------------------------
+// parametry mutacji:
+//----------------------------------------------------------------------------------------------------------
+constexpr double MUTATION_RATE_F = 0.033; // 3.3% szans na mutacje tabeli prawdy LUT (funkcja F)
+// 30LUT * 1funkcja F = 30genow
+// (wartosc oczekiwana liczby mutacji) E = 30 * 0.033 = ok 1
+
+constexpr double MUTATION_RATE_IN = 0.008; // 0.8% szans na przepiecie wejscia/wyjscia
+// 30LUT * 4wejscai + 3wyjscia = 123geny
+// (wartosc oczekiwana liczby mutacji) E = 123 * 0.08 = ok 1
+//
+//w sumie spodziewane wiec ok 2 mutace na pokolenie
+//
+//
+inline Individual mutate(const Individual& parent) {
+	Individual child = parent;
+
+	std::uniform_real_distribution<double> prob(0.0, 1.0);
+	std::uniform_int_distribution<uint16_t> dist_f(0, 65535);
+
+	for (size_t i = 0; i < NUM_NODES; ++i) {
+
+		// mutacja funkcji logicznej
+		if (prob(rng) < MUTATION_RATE_F) {
+			//nowa losaowa funkcja logiczna - jedna z 65536 mozliwych
+			child.luts[i].F = dist_f(rng);
+		}
+
+		// mutacja polaczen wewnatrz
+		for (size_t j = 0; j < 4; ++j) {
+			if (prob(rng) < MUTATION_RATE_IN) {
+				// losowe przepiecie do jednego z wejsci zewnetrznych x0-x2 lub jednego z wyjsc juz obsluzonych lut
+				// co gwarantuje zachowanie struktury acyklicznej
+				std::uniform_int_distribution<size_t> dist_in(0, NUM_INPUTS + i - 1);
+				child.luts[i].in[j] = static_cast<uint8_t>(dist_in(rng));
+			}
+		}
+	}
+
+	// mutacja polaczen z wyjsciami zewnetrznymi y0-y2
+	for (size_t i = 0; i < NUM_OUTPUTS; ++i) {
+		if (prob(rng) < MUTATION_RATE_IN) {
+			std::uniform_int_distribution<size_t> dist_out(NUM_INPUTS, TOTAL_SIGNALS - 1);
+			child.out[i] = static_cast<uint8_t>(dist_out(rng));
+		}
+	}
+
+	return child;
+}
 
 // symulacja osobnika
 inline uint8_t simulate(const Individual& ind, uint8_t x0, uint8_t x1, uint8_t x2, const FaultMask& fault) {
@@ -133,9 +182,13 @@ inline uint8_t simulate(const Individual& ind, uint8_t x0, uint8_t x1, uint8_t x
 
 	// propagacja sygnalow
 	for (size_t i = 0; i < NUM_NODES; ++i) {
-		// jezeli uszkodzone wyjscie - caly LUT wykluczony
-		if (fault.is_active() && static_cast<int>(i) == fault.target_lut && fault.port == FaultPort::OUT) {
-			signals[NUM_INPUTS + i] = 0;
+
+		bool is_faulty_node = fault.is_active() && (static_cast<int>(i) == fault.target_lut);
+		uint8_t fault_val = static_cast<uint8_t>(fault.type);
+
+		// jezeli uszkodzone wyjscie
+		if (is_faulty_node && fault.port == FaultPort::OUT) {
+			signals[NUM_INPUTS + i] = fault_val;
 			continue;
 		}
 
@@ -146,11 +199,11 @@ inline uint8_t simulate(const Individual& ind, uint8_t x0, uint8_t x1, uint8_t x
 		uint8_t idx3 = signals[ind.luts[i].in[3]];
 
 		// jezeli uszkodzone jedno z wejsc
-		if (fault.is_active() && static_cast<int>(i) == fault.target_lut) {
-			if (fault.port == FaultPort::I0) idx0 = 0;
-			else if (fault.port == FaultPort::I1) idx1 = 0;
-			else if (fault.port == FaultPort::I2) idx2 = 0;
-			else if (fault.port == FaultPort::I3) idx3 = 0;
+		if (is_faulty_node) {
+			if (fault.port == FaultPort::I0) idx0 = fault_val;
+			else if (fault.port == FaultPort::I1) idx1 = fault_val;
+			else if (fault.port == FaultPort::I2) idx2 = fault_val;
+			else if (fault.port == FaultPort::I3) idx3 = fault_val;
 		}
 
 		// zlozenie stanow wejsc w kombinacje stanowiaca adres dla pamięci SRAM LUT
@@ -194,7 +247,7 @@ inline int evaluate_fitness(const Individual& ind, const FaultMask& fault) {
 }
 
 // generowanie kodu verilog dla osobnika (genotyp -> fenotyp)
-inline void generateVerilog(const Individual& ind, const std::string& filename) {
+inline void generateVerilog(const Individual& ind, const std::string& filename, const FaultMask& fault) {
 	std::ofstream file(filename);
 	file << "module cgp_core (\n"
 			<< "	input  wire [" << (NUM_INPUTS - 1) << ":0] x,\n"
@@ -212,9 +265,20 @@ inline void generateVerilog(const Individual& ind, const std::string& filename) 
 	}
 	file << "\n";
 
-	// generowanie zabezpieczonych przed optymalizacja kompilatora(* keep = 1 *) bramek LUT
+	// generowanie zabezpieczonych przed optymalizacja kompilatora(* keep = 1 *) bramek LUT z uwzglednieniem FaultMask
 	for (size_t i = 0; i < NUM_NODES; ++i) {
 		size_t node_index = i + NUM_INPUTS;
+
+		// sprawdzenie czy ten LUT jest celem awarii
+		bool is_faulty_node = fault.is_active() && (static_cast<int>(i) == fault.target_lut);
+		std::string fault_val = (fault.type == FaultType::SA1) ? "1'b1" : "1'b0";
+
+		// awaria wyjscia - cala bramka nieaktywna
+		if (is_faulty_node && fault.port == FaultPort::OUT) {
+			file << "   	// [FAULT INJECTED] Zwarcie wyjscia SA" << static_cast<int>(fault.type) << "\n";
+			file << "   	assign sig_" << node_index << " = " << fault_val << ";\n\n";
+			continue; // pomieniecie generowania tego SB_LUT4
+		}
 
 		file << "	(* keep = 1 *) SB_LUT4 #(\n"
 			 << "		.LUT_INIT(16'h";
@@ -226,13 +290,19 @@ inline void generateVerilog(const Individual& ind, const std::string& filename) 
 		file << ind.luts[i].F;
 		file.flags(flags);
 
+		// awaria wejscia (nadpisanie stalego 0 lub 1 dla odpowiedniego wejscia)
+		std::string i0 = (is_faulty_node && fault.port == FaultPort::I0) ? fault_val : "sig_" + std::to_string(ind.luts[i].in[0]);
+		std::string i1 = (is_faulty_node && fault.port == FaultPort::I1) ? fault_val : "sig_" + std::to_string(ind.luts[i].in[1]);
+		std::string i2 = (is_faulty_node && fault.port == FaultPort::I2) ? fault_val : "sig_" + std::to_string(ind.luts[i].in[2]);
+		std::string i3 = (is_faulty_node && fault.port == FaultPort::I3) ? fault_val : "sig_" + std::to_string(ind.luts[i].in[3]);
+
 		file << ")\n"
 			 << "	) cell_" << i << " (\n"
 			 << "		.O(sig_" << node_index << "),\n"
-			 << "		.I0(sig_" << static_cast<int>(ind.luts[i].in[0]) << "),\n"
-			 << "		.I1(sig_" << static_cast<int>(ind.luts[i].in[1]) << "),\n"
-			 << "		.I2(sig_" << static_cast<int>(ind.luts[i].in[2]) << "),\n"
-			 << "		.I3(sig_" << static_cast<int>(ind.luts[i].in[3]) << ")\n"
+			 << "		.I0(" << i0 << "),\n"
+			 << "		.I1(" << i1 << "),\n"
+			 << "		.I2(" << i2 << "),\n"
+			 << "		.I3(" << i3 << ")\n"
 			 << "	);\n\n";
 	}
 
@@ -263,7 +333,7 @@ module cgp_core (
 	(* keep = 1 *) wire sig_6;
 	// ... tak samo dla reszty aa do sig_32 ...
 
-	// LUT 0: y0 = (x2 & !x0) | x1
+	// LUT 0: y0 = (x2 & !x0) | x1   -przyklad: bramka zdrowa
 	(* keep = 1 *) SB_LUT4 #(
 		.LUT_INIT(16'hDCDC)
 	) cell_0 (
@@ -274,27 +344,19 @@ module cgp_core (
 		.I3(sig_1)  // losowe na etapie ziarna
 	);
 
-	// LUT 1: y1 = !x0
+	// LUT 1: y1 = !x0   -przyklad: bramka z awaria wejscia (SA1 na I1)
 	(* keep = 1 *) SB_LUT4 #(
 		.LUT_INIT(16'h5555)
 	) cell_1 (
 		.O(sig_4),
 		.I0(sig_0), // x0
-		.I1(sig_2), // losowe na etapie ziarna
-		.I2(sig_3), // losowe na etapie ziarna
+		.I1(1'b1),  // <--- Nadpisane 1 (Stuck-At-1)
 		.I3(sig_0)  // losowe na etapie ziarna
 	);
 
-	// LUT 2: y2 = x0 & !x1
-	(* keep = 1 *) SB_LUT4 #(
-		.LUT_INIT(16'h2222)
-	) cell_2 (
-		.O(sig_5),
-		.I0(sig_0), // x0
-		.I1(sig_1), // x1
-		.I2(sig_4), // losowe na etapie ziarna
-		.I3(sig_2)  // losowe na etapie ziarna
-	);
+	// LUT 2: y2 = x0 & !x1     -przyklad: awaria wyjscia (SA0 na OUT)- bramka w ogole nie syntetyzowana
+	// [FAULT INJECTED] Zwarcie wyjscia SA0
+	assign sig_5 = 1'b0; // <--- zwarcie do masy (nadpisanie 0)
 
 	// ... tak samo dla kolejnych LUT (3-29) [losowe na etapie ziarna] ....
 
