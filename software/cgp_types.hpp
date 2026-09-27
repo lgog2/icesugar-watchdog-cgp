@@ -15,7 +15,7 @@ constexpr size_t NUM_NODES   = 30;	// liczba LUT4 dla rdzenia
 constexpr size_t TOTAL_SIGNALS = NUM_INPUTS + NUM_NODES;
 
 // ============================================================================
-// STRUKTURY GENOTYPU [30 x [F, in0, in1, in2, in3], out0, out1, out2]
+// STRUKTURA GENOTYPU [30 x [F, in0, in1, in2, in3], out0, out1, out2]
 // ============================================================================
 
 // pojedynczy LUT4 - blok genow?

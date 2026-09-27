@@ -81,7 +81,8 @@ inline Individual create_seed() {
 	* lut_2.F = 16'h2222  (Bin: 16'b0010_0010_0010_0010, Dec: 16'd8738)
 	*
 	* ----------------------------------------------------------------------------*/
-	// budowanie automatyczne funkcji F - kolejno po jednym bicie poczynajac od najmlodszego:
+	// budowanie automatyczne trzech wzorcowych funkcji F (w trzech pierwszysch LUT)
+	//- kolejno po jednym bicie poczynajac od najmlodszego:
 	for (uint16_t lut_idx = 0; lut_idx < 16; ++lut_idx) {
 		//wyodrebnienie wartosci wejsc 0-2 dla danej kombinacji wartosci na wejsciach
 		uint8_t i0 = lut_idx & 1;
@@ -90,7 +91,8 @@ inline Individual create_seed() {
 
 		if (((i2 & !i0) | i1) & 1) {
 			//LUT0 -ustawianie odpowiedniego bitu jezeli rownanie daje 1 dla tej kombinacji wejsc
-			ind.luts[0].F |= (1 << lut_idx); // poczatkowo F wyzerowana
+			// poczatkowo F wyzerowana
+			ind.luts[0].F |= (1 << lut_idx);
 		}
 		if ((!i0) & 1) {
 			//LUT1 -ustawianie odpowiedniego bitu jezeli rownanie daje 1 dla tej kombinacji wejsc
